@@ -21,19 +21,18 @@ import bitsandbytes as bnb
 import pandas as pd
 import transformers
 
-# LOGIN TO HUB FOR MODEL DEPLOYMENT
-# from huggingface_hub import notebook_login
-# notebook_login()
+
 
 # LOADING THE TOKENIZER
 model_id = "mistralai/Mistral-7B-v0.1"
-print("-----------------------------loading tokenizer-----------------------------------------------------------")
+print("loading tokenizer..........................................................")
 tokenizer = AutoTokenizer.from_pretrained(model_id, add_eos_token=True)
 
 
-print("-----------------------------loading dataset-----------------------------------------------------------")
+print("Preparing dataset for fine-tuning..........................................")
 # LOAD DATA FROM HUGGINFACE
-data = load_dataset("gbharti/finance-alpaca", split='train[:1%]')
+data = load_dataset("gbharti/finance-alpaca", split = "train")
+
 
 # PREPARE DATA FOR FINE-TUNING
 def generate_prompt(data_point):
@@ -58,7 +57,6 @@ def generate_prompt(data_point):
         text += f'### Response:\n{data_point["output"]}'
     return text
 
-print("-----------------------------Preparing dataset for fine-tuning-----------------------------------------------------------")
 prompt = [generate_prompt(data_point) for data_point in data]
 data = data.add_column("prompt", prompt);
 data = data.map(lambda sample: tokenizer(sample["prompt"]),num_proc=cpu_count(), batched=True)
@@ -83,7 +81,7 @@ bnb_config = BitsAndBytesConfig(
 
 d_map = {"": torch.cuda.current_device()} if torch.cuda.is_available() else None
 
-print("-----------------------------loading model-----------------------------------------------------------")
+print("loading model....................................")
 model = AutoModelForCausalLM.from_pretrained(
 model_id,
  torch_dtype="auto",
@@ -128,24 +126,27 @@ tokenizer.pad_token = tokenizer.eos_token
 torch.cuda.empty_cache()
 
 
+MAXSTEPS = 100
+NUM_WARMUP_STEPS = 30
+SAVESTEPS = MAXSTEPS/4
+EVALSTEPS = MAXSTEPS/2
+
 training_args = transformers.TrainingArguments(
         per_device_train_batch_size=1,
         per_device_eval_batch_size=1,
         gradient_accumulation_steps=4,
         dataloader_drop_last=True,
         gradient_checkpointing=True,
-        fp16=True,
-        bf16=False,
-        warmup_steps=0.03,
-        max_steps=4,
+        warmup_steps=NUM_WARMUP_STEPS,
+        max_steps = MAXSTEPS,
         learning_rate=2e-4,
-        output_dir="outputs",
+        output_dir="finance-outputs",
         optim="paged_adamw_8bit",
         evaluation_strategy = "steps",
-        save_strategy = "steps",
-        eval_steps = 2,
-        save_steps = 2,
-        logging_steps=2,
+        save_strategy="epoch",
+        eval_steps = EVALSTEPS,
+        save_steps = SAVESTEPS,
+        logging_steps = 1,
         logging_dir = f"outputs/logs",
         lr_scheduler_type= "cosine",
         weight_decay=0.01,
@@ -166,3 +167,11 @@ trainer = SFTTrainer(
 print("finetuning starts........................")
 model.config.use_cache = False
 trainer.train()
+
+model.push_to_hub("Finance")
+tokenizer.push_to_hub("Finance")
+
+
+
+
+
