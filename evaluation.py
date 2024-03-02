@@ -12,7 +12,7 @@ import os
 import csv
 from datasets import Dataset, DatasetDict
 
-os.environ['OPENAI_API_KEY'] = "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"
+os.environ['OPENAI_API_KEY'] = ""
 os.environ['HUGGINGFACEHUB_API_TOKEN'] = ""
 
 
